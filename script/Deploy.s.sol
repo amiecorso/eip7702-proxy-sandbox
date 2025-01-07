@@ -1,63 +1,86 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-/**
- * @title EIP-7702 Deployment Script
- * @notice This script upgrades an EOA to a smart contract wallet using an EIP7702Proxy contract and a CoinbaseSmartWallet implementation
- *
- * Prerequisites:
- * 1. If running locally, start an Anvil node with EIP-7702 support:
- *    ```bash
- *    anvil --odyssey
- *    ```
- *
- * To run this script:
- * ```bash
- * forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast --ffi
- * ```
- *
- * The script will:
- * 1. Deploy the implementation contract (CoinbaseSmartWallet)
- * 2. Deploy the EIP-7702 proxy template (EIP7702Proxy)
- * 3. Generate the required authorization signature
- * 4. Send the initialization transaction wrapped with the EIP-7702 authorization to upgrade the EOA
- * 5. Verify the upgrade by checking the code at the EOA address
- */
-
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {EIP7702Proxy} from "../src/EIP7702Proxy.sol";
 import {CoinbaseSmartWallet} from "smart-wallet/CoinbaseSmartWallet.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 
+/**
+ * This script upgrades an EOA to a smart contract wallet using an EIP7702Proxy contract and a CoinbaseSmartWallet implementation
+ *
+ * Prerequisites:
+ * 1. For local testing: Anvil node must be running with --odyssey flag
+ * 2. For Odyssey testnet: Must have DEPLOYER_PRIVATE_KEY and EOA_PRIVATE_KEY env vars set
+ *
+ * Running instructions:
+ * 
+ * Local testing:
+ * 1. Start an Anvil node with EIP-7702 support:
+ *    ```bash
+ *    anvil --odyssey
+ *    ```
+ * 2. Run this script:
+ *    ```bash
+ *    forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast --ffi
+ *    ```
+ *
+ * Odyssey testnet:
+ * 1. Set environment variables:
+ *    ```bash
+ *    export DEPLOYER_PRIVATE_KEY=your_deployer_key
+ *    export EOA_PRIVATE_KEY=private_key_of_eoa_to_upgrade
+ *    ```
+ * 2. Run this script:
+ *    ```bash
+ *    forge script script/Deploy.s.sol --rpc-url https://odyssey.ithaca.xyz --broadcast --ffi
+ *    ```
+ *
+ * What this script does:
+ * 1. Deploy the implementation contract (CoinbaseSmartWallet)
+ * 2. Deploy the EIP-7702 proxy template (EIP7702Proxy)
+ * 3. Generate the required authorization signature
+ * 4. Send the initialization transaction wrapped with the EIP-7702 authorization to upgrade the EOA
+ * 5. Verify the upgrade by checking the code at the EOA address
+ */
 contract DeployScript is Script {
     using Strings for address;
     using Strings for uint256;
 
-    // Anvil's default funded accounts
-    address constant ALICE = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
-    uint256 constant ALICE_PK = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
-    uint256 constant BOB_PK = 0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a;
-    // Use a different deployer for initial contracts
-    uint256 constant DEPLOYER_PK = 0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6;
+    // Anvil's default funded accounts (for local testing)
+    address constant ANVIL_ALICE = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
+    uint256 constant ANVIL_ALICE_PK = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
+    uint256 constant ANVIL_DEPLOYER_PK = 0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6;
+
+    // Chain IDs
+    uint256 constant ANVIL_CHAIN_ID = 31337;
+    uint256 constant ODYSSEY_CHAIN_ID = 911867;
 
     function run() external {
-        uint256 eoa_private_key;
+        // Determine which environment we're in
+        uint256 deployerPk;
+        uint256 eoaPk;
+        address eoa;
 
-        // Check if we're on anvil by checking chainid
-        if (block.chainid == 31337) {
+        if (block.chainid == ANVIL_CHAIN_ID) {
             console.log("Using Anvil's pre-funded accounts");
-            eoa_private_key = ALICE_PK;
+            deployerPk = ANVIL_DEPLOYER_PK;
+            eoaPk = ANVIL_ALICE_PK;
+            eoa = ANVIL_ALICE;
+        } else if (block.chainid == ODYSSEY_CHAIN_ID) {
+            console.log("Using Odyssey testnet with environment variables");
+            deployerPk = vm.envUint("DEPLOYER_PRIVATE_KEY");
+            eoaPk = vm.envUint("EOA_PRIVATE_KEY");
+            eoa = vm.addr(eoaPk);
         } else {
-            console.log("Using accounts from environment variables");
-            eoa_private_key = vm.envUint("EOA_PRIVATE_KEY");
+            revert("Unsupported chain ID");
         }
 
-        address eoa = vm.addr(eoa_private_key);
-        console.log("EOA address:", eoa);
+        console.log("EOA to upgrade:", eoa);
         
-        // Deploy contracts using a separate deployer
-        vm.startBroadcast(DEPLOYER_PK);
+        // Deploy contracts using deployer
+        vm.startBroadcast(deployerPk);
 
         // 1. Deploy implementation contract
         CoinbaseSmartWallet implementation = new CoinbaseSmartWallet();
@@ -73,30 +96,35 @@ contract DeployScript is Script {
 
         vm.stopBroadcast();
 
-        // Get the current nonce for the EOA (Alice)
+        // Get the current nonce for the EOA
         string[] memory nonceInputs = new string[](5);
         nonceInputs[0] = "cast";
         nonceInputs[1] = "nonce";
         nonceInputs[2] = vm.toString(eoa);
         nonceInputs[3] = "--rpc-url";
-        nonceInputs[4] = "http://localhost:8545";
+        nonceInputs[4] = block.chainid == ANVIL_CHAIN_ID ? "http://localhost:8545" : "https://odyssey.ithaca.xyz";
         bytes memory nonceBytes = vm.ffi(nonceInputs);
         string memory nonceStr = string(nonceBytes);
         uint256 eoaNonce = vm.parseUint(nonceStr);
         console.log("EOA current nonce:", eoaNonce);
         
-        // 3. Sign EIP-7702 authorization using cast wallet sign-auth
+        // IMPORTANT: For EIP-7702 initialization, the nonce ordering is critical:
+        // 1. The auth signature must use nonce + 1 (next nonce)
+        // 2. The initialization transaction must use current nonce
+        // This is because the auth needs to remain valid after the transaction consumes the current nonce
+        
+        // 3. Sign EIP-7702 authorization using cast wallet sign-auth with next nonce
         string[] memory authInputs = new string[](8);
         authInputs[0] = "cast";
         authInputs[1] = "wallet";
         authInputs[2] = "sign-auth";
         authInputs[3] = vm.toString(address(proxy));
         authInputs[4] = "--private-key";
-        authInputs[5] = vm.toString(bytes32(eoa_private_key));
+        authInputs[5] = vm.toString(bytes32(eoaPk));
         authInputs[6] = "--nonce";
-        authInputs[7] = vm.toString(eoaNonce);
+        authInputs[7] = vm.toString(eoaNonce + 1);  // Auth must use next nonce to remain valid after transaction
         
-        console.log("Executing sign-auth command:");
+        console.log("Executing sign-auth command with next nonce:", eoaNonce + 1);
         for (uint i = 0; i < authInputs.length; i++) {
             console.log(authInputs[i]);
         }
@@ -107,35 +135,29 @@ contract DeployScript is Script {
         // 4. Prepare initialization args for the proxy
         bytes[] memory owners = new bytes[](1);
         owners[0] = abi.encode(eoa);
-        bytes32 initHash = keccak256(abi.encode(eoa, owners));
+        bytes memory initArgs = abi.encode(owners);
+        bytes32 initHash = keccak256(abi.encode(address(proxy), initArgs));
         
         // Get signature components
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(eoa_private_key, initHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(eoaPk, initHash);
         bytes memory initSignature = abi.encodePacked(r, s, v);
 
-        // Get Bob's current nonce for the final transaction
-        nonceInputs[2] = vm.toString(vm.addr(BOB_PK));
-        nonceBytes = vm.ffi(nonceInputs);
-        nonceStr = string(nonceBytes);
-        uint256 bobNonce = vm.parseUint(nonceStr);
-        console.log("Bob's current nonce:", bobNonce);
-
-        // 5. Send the EIP-7702 transaction
+        // 5. Send the EIP-7702 transaction using current nonce
         string[] memory sendInputs = new string[](12);
         sendInputs[0] = "cast";
         sendInputs[1] = "send";
         sendInputs[2] = vm.toString(eoa);
         sendInputs[3] = "initialize(bytes,bytes)";
-        sendInputs[4] = vm.toString(abi.encode(owners));
+        sendInputs[4] = vm.toString(initArgs);
         sendInputs[5] = vm.toString(initSignature);
         sendInputs[6] = "--private-key";
-        sendInputs[7] = vm.toString(bytes32(BOB_PK));
+        sendInputs[7] = vm.toString(bytes32(eoaPk));
         sendInputs[8] = "--auth";
         sendInputs[9] = vm.toString(auth);
         sendInputs[10] = "--nonce";
-        sendInputs[11] = vm.toString(bobNonce);
+        sendInputs[11] = vm.toString(eoaNonce);  // Transaction uses current nonce, which it will consume
 
-        console.log("Executing send command:");
+        console.log("Executing send command with current nonce:", eoaNonce);
         for (uint i = 0; i < sendInputs.length; i++) {
             console.log(sendInputs[i]);
         }
@@ -149,16 +171,16 @@ contract DeployScript is Script {
         codeInputs[1] = "code";
         codeInputs[2] = vm.toString(eoa);
         codeInputs[3] = "--rpc-url";
-        codeInputs[4] = "http://localhost:8545";
+        codeInputs[4] = block.chainid == ANVIL_CHAIN_ID ? "http://localhost:8545" : "https://odyssey.ithaca.xyz";
 
         bytes memory code = vm.ffi(codeInputs);
         console.log("EOA code after upgrade:");
         console.log(vm.toString(code));
         
         if (code.length > 0) {
-            console.log("Success: EOA has been upgraded to a smart contract!");
+            console.log("[OK] Success: EOA has been upgraded to a smart contract!");
         } else {
-            console.log("Error: EOA code is still empty!");
+            console.log("[ERROR] Error: EOA code is still empty!");
         }
     }
 }
