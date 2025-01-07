@@ -1,6 +1,29 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
+/**
+ * @title EIP-7702 Deployment Script
+ * @notice This script upgrades an EOA to a smart contract wallet using an EIP7702Proxy contract and a CoinbaseSmartWallet implementation
+ *
+ * Prerequisites:
+ * 1. If running locally, start an Anvil node with EIP-7702 support:
+ *    ```bash
+ *    anvil --odyssey
+ *    ```
+ *
+ * To run this script:
+ * ```bash
+ * forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast --ffi
+ * ```
+ *
+ * The script will:
+ * 1. Deploy the implementation contract (CoinbaseSmartWallet)
+ * 2. Deploy the EIP-7702 proxy template (EIP7702Proxy)
+ * 3. Generate the required authorization signature
+ * 4. Send the initialization transaction wrapped with the EIP-7702 authorization to upgrade the EOA
+ * 5. Verify the upgrade by checking the code at the EOA address
+ */
+
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {EIP7702Proxy} from "../src/EIP7702Proxy.sol";
