@@ -4,7 +4,6 @@ pragma solidity ^0.8.0;
 import {Proxy} from "openzeppelin-contracts/contracts/proxy/Proxy.sol";
 import {ERC1967Utils} from "openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import {ECDSA} from "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
-import {MessageHashUtils} from "openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol";
 import {Address} from "openzeppelin-contracts/contracts/utils/Address.sol";
 
 /// @notice Proxy contract designed for EIP-7702 smart accounts.
@@ -27,7 +26,7 @@ contract EIP7702Proxy is Proxy {
 
     function initialize(bytes calldata args, bytes calldata signature) external {
         bytes32 hash = keccak256(abi.encode(proxy, args));
-        address recovered = ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(hash), signature);
+        address recovered = ECDSA.recover(hash, signature);
         if (recovered != address(this)) revert InvalidSignature();
 
         Address.functionDelegateCall(initialImplementation, abi.encodePacked(guardedInitializer, args));
