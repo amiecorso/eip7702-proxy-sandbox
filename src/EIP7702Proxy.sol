@@ -17,6 +17,7 @@ contract EIP7702Proxy is Proxy {
 
     error InvalidSignature();
     error InvalidInitializer();
+    error InvalidImplementation();
 
     constructor(address implementation, bytes4 initializer) {
         proxy = address(this);
@@ -25,9 +26,14 @@ contract EIP7702Proxy is Proxy {
     }
 
     function initialize(bytes calldata args, bytes calldata signature) external {
+        // construct hash incompatible with wallet RPCs to avoid phishing
         bytes32 hash = keccak256(abi.encode(proxy, args));
         address recovered = ECDSA.recover(hash, signature);
         if (recovered != address(this)) revert InvalidSignature();
+
+        // enforce initialization only on initial implementation
+        address implementation = _implementation();
+        if (implementation != initialImplementation) revert InvalidImplementation();
 
         Address.functionDelegateCall(initialImplementation, abi.encodePacked(guardedInitializer, args));
     }
@@ -38,6 +44,7 @@ contract EIP7702Proxy is Proxy {
     }
 
     function _fallback() internal override {
+        // block guarded initializer from being called
         if (msg.sig == guardedInitializer) revert InvalidInitializer();
         _delegate(_implementation());
     }

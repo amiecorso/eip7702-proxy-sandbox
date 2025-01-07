@@ -1,66 +1,29 @@
-## Foundry
+## EIP-7702 Proxy
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+**Proxy contract designed for EIP-7702 accounts.**
 
-Foundry consists of:
+Key features:
+* Protect initializers with chain-agnostic EOA signatures
+* Use existing Smart Account contracts without changes
+* Unify contract implementation upgrades using ERC-1967 storage slots
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+How to use:
+1. Deploy an instance of `EIP7702Proxy` pointing to a specific smart account implementation.
+1. Sign an EIP-7702 authorization with the EOA
+1. Sign an initialization hash with the EOA
+1. Submit transaction with EIP-7702 authorization and call to `account.initialize(bytes args, bytes signature)`
+    1. `bytes args`: arguments to the smart account implementation's actual initializer function
+    1. `bytes signature`: ECDSA signature over the initialization hash from the EOA
 
-## Documentation
+Now the EOA has been upgraded to the smart account implementation and had its state initialized.
 
-https://book.getfoundry.sh/
+If the smart account implementation supports UUPS upgradeability, it will work as designed by submitting upgrade calls to the account.
 
-## Usage
-
-### Build
-
-```shell
-$ forge build
-```
-
-### Test
-
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+How does it work?
+* `EIP7702Proxy` is constructed with an `initalImplementation` that it will delegate all calls to by default
+* `EIP7702Proxy` is constructed with a `guardedInitializer`, the initializer selector of the `initialImplementation`
+* Calls to the account on `guardedInitializer` revert and do not delegate the call to the smart account implementation
+* `EIP7702Proxy` defines a new, static selector compatible with all initializers: `initialize(bytes args, bytes signature)`
+* Calls to the account on `initialize` have their signature validated via ECDSA and the proxy delegates a call combining the `guardedInitializer` and provided `args` to the `initialImplementation`
+* The `initialImplementation` is responsible for handling replay protection, which is standard practice among smart accounts
+* All other function selectors are undisturbed and this proxy functions akin to a simple ERC-1967 proxy
