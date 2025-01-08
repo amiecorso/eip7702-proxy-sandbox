@@ -44,9 +44,10 @@ This repository contains scripts that can be used to perform an EIP-7702 upgrade
 
 ### Prerequisites
 - Foundry installed
-- If you're using the Odyssey testnet, you'll need two private keys funded with some Odyssey ETH (see `.env.example`):
+- If you're using the Odyssey testnet, you'll need three private keys funded with some Odyssey ETH (see `.env.example`):
     - `EOA_PRIVATE_KEY`: The private key of the EOA to be upgraded
     - `DEPLOYER_PRIVATE_KEY`: The private key of the EOA that will perform the upgrade
+    - `NEW_OWNER_PRIVATE_KEY`: The private key of another EOA that will be added as an owner
 
 Odyssey Chain Info: https://hub.conduit.xyz/odyssey
 
