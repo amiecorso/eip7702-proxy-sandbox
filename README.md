@@ -34,11 +34,16 @@ If the smart account implementation supports UUPS upgradeability, it will work a
 
 ## Performing EIP-7702 upgrades
 
-This repository contains scripts that can be used to perform an EIP-7702 upgrade to a `EIP7702Proxy` with a `CoinbaseSmartWallet` implementation and initialize the smart account. The (Odyssey testnet)[https://hub.conduit.xyz/odyssey] by (Ithaca)[https://www.ithaca.xyz] has EIP-7702 enabled. If testing locally, you can use the Anvil testnet with Odyssey enabled.
+This repository contains scripts that can be used to perform an EIP-7702 upgrade to a `EIP7702Proxy` with a `CoinbaseSmartWallet` implementation and initialize the smart account. The [Odyssey testnet](https://hub.conduit.xyz/odyssey) by [Ithaca](https://www.ithaca.xyz) has EIP-7702 enabled. If testing locally, you can use the Anvil testnet with Odyssey enabled.
 
-   - `UpgradeEOA.s.sol`: Handles implementation and proxy template deployments and the EIP-7702 upgrade
-   - `Initialize.s.sol`: Initializes the smart account and tests for successful initialization
+The upgrade process happens in two steps:
 
+1. **UpgradeEOA.s.sol**: Deploys the implementation and proxy template, then performs the EIP-7702 upgrade
+   - Outputs the proxy template address which is needed for the initialization step
+   - For Odyssey: Save this address to use in the next step
+
+2. **Initialize.s.sol**: Initializes the smart account with a new owner and tests the upgrade
+   - For Odyssey: Requires the proxy template address from step 1
 
 > ℹ️ See the scripts themselves for additional comments and documentation.
 
@@ -48,6 +53,7 @@ This repository contains scripts that can be used to perform an EIP-7702 upgrade
     - `EOA_PRIVATE_KEY`: The private key of the EOA to be upgraded
     - `DEPLOYER_PRIVATE_KEY`: The private key of the EOA that will perform the upgrade
     - `NEW_OWNER_PRIVATE_KEY`: The private key of another EOA that will be added as an owner
+    - `PROXY_TEMPLATE_ADDRESS_ODYSSEY`: Address of the proxy template (from UpgradeEOA.s.sol output)
 
 Odyssey Chain Info: https://hub.conduit.xyz/odyssey
 
@@ -70,25 +76,28 @@ forge script script/Initialize.s.sol --rpc-url http://localhost:8545 --broadcast
 
 ### Odyssey Testnet Deployment
 
-1. Run the UpgradeEOA script with Odyssey RPC:
+1. Set up environment variables (see `.env.example`)
+
+2. Run the UpgradeEOA script with Odyssey RPC:
 ```bash
 forge script script/UpgradeEOA.s.sol --rpc-url https://odyssey.ithaca.xyz --broadcast --ffi
+# Note the proxy template address from the output
+export PROXY_TEMPLATE_ADDRESS_ODYSSEY=<address from output>
 ```
 
-2. Run the Initialize script:
+3. Run the Initialize script:
 ```bash
 forge script script/Initialize.s.sol --rpc-url https://odyssey.ithaca.xyz --broadcast
 ```
 
 ## Contract Verification
 
-Below are the commands to verify the implementation contract and proxy template.While we can verify the implementation contract and proxy template, we've been unable to verify the upgraded EOA address directly. We suspect it might be related to EIP-7702's deployment mechanism being different from traditional contract deployments, but this needs to be confirmed with the Blockscout and/or Ithaca teams.
+Below are the commands to verify the implementation contract and proxy template. While we can verify the implementation contract and proxy template, we've been unable to verify the upgraded EOA address directly. We suspect it might be related to EIP-7702's deployment mechanism being different from traditional contract deployments, but this needs to be confirmed with the Blockscout and/or Ithaca teams.
 
 In the meantime, you can check correctness by:
 1. Comparing your EOA's code with the verified proxy template
 2. Checking that the proxy delegates to the verified implementation
 3. Using the provided scripts to test interactions
-
 
 ### Verifying the Implementation Contract
 
