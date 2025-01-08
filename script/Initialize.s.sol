@@ -12,7 +12,11 @@ import {ECDSA} from "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.s
  * Prerequisites:
  * 1. EOA must already be upgraded using UpgradeEOA.s.sol
  * 2. For local testing: Anvil node must be running with --odyssey flag
- * 3. For Odyssey testnet: Must have EOA_PRIVATE_KEY env var set
+ * 3. For Odyssey testnet: Must have environment variables set:
+ *    - EOA_PRIVATE_KEY: Private key of the EOA being upgraded
+ *    - NEW_OWNER_PRIVATE_KEY: Private key of the account that will be the owner of the smart wallet
+ *    - DEPLOYER_PRIVATE_KEY: Private key of the account that deployed the contracts (used as recipient for test transactions)
+ *    - PROXY_TEMPLATE_ADDRESS_ODYSSEY: Address of the deployed proxy template on Odyssey
  *
  * Running instructions:
  * 
@@ -41,9 +45,8 @@ contract Initialize is Script {
     uint256 constant _ANVIL_CHAIN_ID = 31337;
     uint256 constant _ODYSSEY_CHAIN_ID = 911867;
 
-    // Deterministic proxy addresses for different environments
+    // Deterministic proxy address for Anvil environment
     address constant _PROXY_ADDRESS_ANVIL = 0x2d95f129bCEbD5cF7f395c7B34106ac1DCfb0CA9;
-    address constant _PROXY_ADDRESS_ODYSSEY = 0x6894C39b879fc14e7B107C16Dc6D50140D466d2a;
 
     function run() external {
         // Determine which environment we're in
@@ -70,7 +73,7 @@ contract Initialize is Script {
             newOwner = vm.addr(newOwnerPk);
             uint256 deployerPk = vm.envUint("DEPLOYER_PRIVATE_KEY");
             deployer = vm.addr(deployerPk);
-            proxyAddr = _PROXY_ADDRESS_ODYSSEY;
+            proxyAddr = vm.envAddress("PROXY_TEMPLATE_ADDRESS_ODYSSEY");
         } else {
             revert("Unsupported chain ID");
         }
@@ -96,6 +99,7 @@ contract Initialize is Script {
         // Try to recover ourselves before sending
         address recovered = ECDSA.recover(initHash, initSignature);
         console.log("Recovered:", recovered);
+        require(recovered == eoa, "Signature recovery failed - wrong signer");
 
         // Start broadcast with EOA's private key to call initialize
         vm.startBroadcast(eoaPk);
@@ -119,7 +123,7 @@ contract Initialize is Script {
 
         // Test that the new owner can execute a transaction
         // We'll try to send some ETH to the deployer account
-        uint256 amount = 0.001 ether;
+        uint256 amount = 0.0001 ether;
         uint256 deployerBalanceBefore = deployer.balance;
         console.log("Deployer balance before:", deployerBalanceBefore);
 
