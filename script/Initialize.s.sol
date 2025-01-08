@@ -35,39 +35,42 @@ contract Initialize is Script {
     uint256 constant _ANVIL_CHAIN_ID = 31337;
     uint256 constant _ODYSSEY_CHAIN_ID = 911867;
 
-    // Deterministic proxy address (calculated from create2 deployment)
-    address constant PROXY_ADDRESS = 0x2d95f129bCEbD5cF7f395c7B34106ac1DCfb0CA9; 
+    // Deterministic proxy addresses for different environments
+    address constant _PROXY_ADDRESS_ANVIL = 0x2d95f129bCEbD5cF7f395c7B34106ac1DCfb0CA9;
+    address constant _PROXY_ADDRESS_ODYSSEY = 0x6894C39b879fc14e7B107C16Dc6D50140D466d2a;
 
     function run() external {
         // Determine which environment we're in
         address eoa;
         uint256 eoaPk;
+        address proxyAddr;
 
         if (block.chainid == _ANVIL_CHAIN_ID) {
             console.log("Using Anvil's pre-funded accounts");
             eoa = _ANVIL_ALICE;
             eoaPk = _ANVIL_ALICE_PK;
+            proxyAddr = _PROXY_ADDRESS_ANVIL;
         } else if (block.chainid == _ODYSSEY_CHAIN_ID) {
             console.log("Using Odyssey testnet with environment variables");
             eoaPk = vm.envUint("EOA_PRIVATE_KEY");
             eoa = vm.addr(eoaPk);
+            proxyAddr = _PROXY_ADDRESS_ODYSSEY;
         } else {
             revert("Unsupported chain ID");
         }
 
         console.log("EOA address:", eoa);
+        console.log("Using proxy template at:", proxyAddr);
 
         // First verify the EOA has code
         require(address(eoa).code.length > 0, "EOA not upgraded yet! Run Auth.s.sol first");
         console.log("[OK] Verified EOA has been upgraded");
 
-        // Call initialize on the proxy
-
         // Create and sign the initialize data
         bytes[] memory owners = new bytes[](1);
         owners[0] = abi.encode(eoa);
         bytes memory initArgs = abi.encode(owners);
-        bytes32 initHash = keccak256(abi.encode(PROXY_ADDRESS, initArgs));
+        bytes32 initHash = keccak256(abi.encode(proxyAddr, initArgs));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(eoaPk, initHash);
         
         bytes memory initSignature = abi.encodePacked(r, s, v);
@@ -85,7 +88,7 @@ contract Initialize is Script {
         } catch Error(string memory reason) {
             console.log("[INFO] Initialize call reverted with reason:", reason);
         } catch (bytes memory) {
-            console.log("[INFO] EOA already initialized");
+            console.log("[INFO] Initialization failed: EOA may already have been initialized");
         }
 
         vm.stopBroadcast();

@@ -106,12 +106,15 @@ contract Auth is Script {
         vm.stopBroadcast();
 
         // Get the current nonce for the EOA
+        string memory rpcUrl = block.chainid == _ANVIL_CHAIN_ID ? "http://localhost:8545" : "https://odyssey.ithaca.xyz";
+        
         string[] memory nonceInputs = new string[](5);
         nonceInputs[0] = "cast";
         nonceInputs[1] = "nonce";
         nonceInputs[2] = vm.toString(eoa);
         nonceInputs[3] = "--rpc-url";
-        nonceInputs[4] = block.chainid == _ANVIL_CHAIN_ID ? "http://localhost:8545" : "https://odyssey.ithaca.xyz";
+        nonceInputs[4] = rpcUrl;
+        
         bytes memory nonceBytes = vm.ffi(nonceInputs);
         string memory nonceStr = string(nonceBytes);
         uint256 eoaNonce = vm.parseUint(nonceStr);
@@ -123,7 +126,7 @@ contract Auth is Script {
         // This is because the auth needs to remain valid after the transaction containing it consumes the current nonce
         
         // 3. Sign EIP-7702 authorization using cast wallet sign-auth with next nonce
-        string[] memory authInputs = new string[](8);
+        string[] memory authInputs = new string[](10);
         authInputs[0] = "cast";
         authInputs[1] = "wallet";
         authInputs[2] = "sign-auth";
@@ -132,6 +135,8 @@ contract Auth is Script {
         authInputs[5] = vm.toString(bytes32(eoaPk));
         authInputs[6] = "--nonce";
         authInputs[7] = vm.toString(eoaNonce + 1);  // Auth must use next nonce to remain valid after transaction
+        authInputs[8] = "--rpc-url";
+        authInputs[9] = rpcUrl;
         
         console.log("Executing sign-auth command with next nonce:", eoaNonce + 1);
         for (uint i = 0; i < authInputs.length; i++) {
@@ -142,7 +147,7 @@ contract Auth is Script {
         console.log("Generated auth signature:", vm.toString(auth));
 
         // 5. Send a simple transaction with auth (using cast)
-        string[] memory sendInputs = new string[](11);
+        string[] memory sendInputs = new string[](13);
         sendInputs[0] = "cast";
         sendInputs[1] = "send";
         sendInputs[2] = vm.toString(eoa);  // sending to self
@@ -153,7 +158,9 @@ contract Auth is Script {
         sendInputs[7] = "--auth";
         sendInputs[8] = vm.toString(auth);
         sendInputs[9] = "--nonce";
-        sendInputs[10] = vm.toString(eoaNonce);  // Transaction uses current nonce, which it will consume
+        sendInputs[10] = vm.toString(eoaNonce);  // Transaction uses current nonce
+        sendInputs[11] = "--rpc-url";
+        sendInputs[12] = rpcUrl;
 
         console.log("Executing auth transaction with current nonce:", eoaNonce);
         for (uint i = 0; i < sendInputs.length; i++) {
@@ -163,15 +170,13 @@ contract Auth is Script {
         bytes memory result = vm.ffi(sendInputs);
         console.log("Auth transaction sent.");
 
-        // console.log("Auth transaction sent with result:", vm.toString(result));
-
         // Verify EOA has been upgraded by checking its code
         string[] memory codeInputs = new string[](5);
         codeInputs[0] = "cast";
         codeInputs[1] = "code";
         codeInputs[2] = vm.toString(eoa);
         codeInputs[3] = "--rpc-url";
-        codeInputs[4] = block.chainid == _ANVIL_CHAIN_ID ? "http://localhost:8545" : "https://odyssey.ithaca.xyz";
+        codeInputs[4] = rpcUrl;
 
         bytes memory code = vm.ffi(codeInputs);
         console.log("EOA code after upgrade:");
@@ -179,6 +184,46 @@ contract Auth is Script {
         
         if (code.length > 0) {
             console.log("[OK] Success: EOA has been upgraded to a smart contract!");
+
+            // Verify the contracts on the block explorer
+            string memory verifyUrl = block.chainid == _ANVIL_CHAIN_ID 
+                ? "http://localhost:4000/api"  // Local Blockscout instance if running
+                : "https://odyssey-explorer.ithaca.xyz/api";
+            
+            // Get the initializer selector
+            bytes4 initSelector = CoinbaseSmartWallet.initialize.selector;
+            
+            // Verify the proxy contract
+            string[] memory verifyProxyInputs = new string[](10);
+            verifyProxyInputs[0] = "forge";
+            verifyProxyInputs[1] = "verify-contract";
+            verifyProxyInputs[2] = vm.toString(eoa);  // The EOA address where proxy is deployed
+            verifyProxyInputs[3] = "src/EIP7702Proxy.sol:EIP7702Proxy";
+            verifyProxyInputs[4] = "--verifier";
+            verifyProxyInputs[5] = "blockscout";
+            verifyProxyInputs[6] = "--verifier-url";
+            verifyProxyInputs[7] = verifyUrl;
+            verifyProxyInputs[8] = "--constructor-args";
+            verifyProxyInputs[9] = vm.toString(abi.encode(address(implementation), initSelector));
+            
+            console.log("Verifying proxy contract...");
+            vm.ffi(verifyProxyInputs);
+            
+            // Verify the implementation contract
+            string[] memory verifyImplInputs = new string[](8);
+            verifyImplInputs[0] = "forge";
+            verifyImplInputs[1] = "verify-contract";
+            verifyImplInputs[2] = vm.toString(address(implementation));
+            verifyImplInputs[3] = "lib/smart-wallet/src/CoinbaseSmartWallet.sol:CoinbaseSmartWallet";
+            verifyImplInputs[4] = "--verifier";
+            verifyImplInputs[5] = "blockscout";
+            verifyImplInputs[6] = "--verifier-url";
+            verifyImplInputs[7] = verifyUrl;
+            
+            console.log("Verifying implementation contract...");
+            vm.ffi(verifyImplInputs);
+            
+            console.log("[OK] Contract verification submitted to block explorer");
         } else {
             console.log("[ERROR] Error: EOA code is still empty!");
         }
