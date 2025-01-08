@@ -6,7 +6,7 @@ import {console} from "forge-std/console.sol";
 import {EIP7702Proxy} from "../src/EIP7702Proxy.sol";
 import {CoinbaseSmartWallet} from "../lib/smart-wallet/src/CoinbaseSmartWallet.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
-import {ECDSA} from "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
+
 /**
  * This script upgrades an EOA to a smart contract wallet using an EIP7702Proxy contract and a CoinbaseSmartWallet implementation
  *
@@ -62,6 +62,7 @@ contract Auth is Script {
         uint256 deployerPk;
         uint256 eoaPk;
         address eoa;
+        EIP7702Proxy proxy;
 
         if (block.chainid == _ANVIL_CHAIN_ID) {
             console.log("Using Anvil's pre-funded accounts");
@@ -79,6 +80,12 @@ contract Auth is Script {
 
         console.log("EOA to upgrade:", eoa);
         
+        // Check if EOA is already upgraded
+        if (address(eoa).code.length > 0) {
+            console.log("[SKIP] EOA already has code deployed, skipping upgrade");
+            return;
+        }
+        
         // Deploy contracts using separate deployer, to avoid nonce issues with the EOA that happen
         // when mixing broadcast and FFI in Foundry.
         vm.startBroadcast(deployerPk);
@@ -87,13 +94,14 @@ contract Auth is Script {
         CoinbaseSmartWallet implementation = new CoinbaseSmartWallet();
         console.log("Implementation deployed at:", address(implementation));
 
-        // 2. Deploy proxy contract
+        // 2. Deploy proxy contract with create2 for deterministic address
         bytes4 initSelector = CoinbaseSmartWallet.initialize.selector;
-        EIP7702Proxy proxy = new EIP7702Proxy(
+        bytes32 salt = bytes32(0);  // We can use 0 as salt since we only need one deployment
+        proxy = new EIP7702Proxy{salt: salt}(
             address(implementation),
             initSelector
         );
-        console.log("Proxy template deployed at:", address(proxy));
+        console.log("Proxy deployed at:", address(proxy));
 
         vm.stopBroadcast();
 
@@ -153,7 +161,9 @@ contract Auth is Script {
         }
 
         bytes memory result = vm.ffi(sendInputs);
-        console.log("Auth transaction sent with result:", vm.toString(result));
+        console.log("Auth transaction sent.");
+
+        // console.log("Auth transaction sent with result:", vm.toString(result));
 
         // Verify EOA has been upgraded by checking its code
         string[] memory codeInputs = new string[](5);
