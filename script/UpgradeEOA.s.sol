@@ -9,6 +9,7 @@ import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 
 /**
  * This script upgrades an EOA to a smart contract wallet using an EIP7702Proxy contract and a CoinbaseSmartWallet implementation
+ * Adapted from the example at https://github.com/ithacaxyz/odyssey-examples/tree/main/chapter1/simple-7702.
  *
  * Prerequisites:
  * 1. For local testing: Anvil node must be running with --odyssey flag
@@ -23,7 +24,7 @@ import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
  *    ```
  * 2. Run this script:
  *    ```bash
- *    forge script script/Auth.s.sol --rpc-url http://localhost:8545 --broadcast --ffi
+ *    forge script script/UpgradeEOA.s.sol --rpc-url http://localhost:8545 --broadcast --ffi
  *    ```
  *
  * Odyssey testnet:
@@ -34,7 +35,7 @@ import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
  *    ```
  * 2. Run this script:
  *    ```bash
- *    forge script script/Auth.s.sol --rpc-url https://odyssey.ithaca.xyz --broadcast --ffi
+ *    forge script script/UpgradeEOA.s.sol --rpc-url https://odyssey.ithaca.xyz --broadcast --ffi
  *    ```
  *
  * What this script does:
@@ -43,8 +44,12 @@ import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
  * 3. Generate the required authorization signature
  * 4. Send this signed auth object to upgrade the EOA
  * 5. Verify the upgrade by checking the code at the EOA address
+
+ * NOTE: In theory there is no reason the initialization and auth steps need to be separate -- we could be making the call to initialize() in the same transaction as the auth signature
+ * instead of performing no work and sending 0 value. However, I've been unable to get the call to initialize() to succeed when passed via cast, which is also very difficult to debug,
+ * so for now we're doing it in two separate steps.
  */
-contract Auth is Script {
+contract UpgradeEOA is Script {
     using Strings for address;
     using Strings for uint256;
 
@@ -184,46 +189,6 @@ contract Auth is Script {
         
         if (code.length > 0) {
             console.log("[OK] Success: EOA has been upgraded to a smart contract!");
-
-            // Verify the contracts on the block explorer
-            string memory verifyUrl = block.chainid == _ANVIL_CHAIN_ID 
-                ? "http://localhost:4000/api"  // Local Blockscout instance if running
-                : "https://odyssey-explorer.ithaca.xyz/api";
-            
-            // Get the initializer selector
-            bytes4 initSelector = CoinbaseSmartWallet.initialize.selector;
-            
-            // Verify the proxy contract
-            string[] memory verifyProxyInputs = new string[](10);
-            verifyProxyInputs[0] = "forge";
-            verifyProxyInputs[1] = "verify-contract";
-            verifyProxyInputs[2] = vm.toString(eoa);  // The EOA address where proxy is deployed
-            verifyProxyInputs[3] = "src/EIP7702Proxy.sol:EIP7702Proxy";
-            verifyProxyInputs[4] = "--verifier";
-            verifyProxyInputs[5] = "blockscout";
-            verifyProxyInputs[6] = "--verifier-url";
-            verifyProxyInputs[7] = verifyUrl;
-            verifyProxyInputs[8] = "--constructor-args";
-            verifyProxyInputs[9] = vm.toString(abi.encode(address(implementation), initSelector));
-            
-            console.log("Verifying proxy contract...");
-            vm.ffi(verifyProxyInputs);
-            
-            // Verify the implementation contract
-            string[] memory verifyImplInputs = new string[](8);
-            verifyImplInputs[0] = "forge";
-            verifyImplInputs[1] = "verify-contract";
-            verifyImplInputs[2] = vm.toString(address(implementation));
-            verifyImplInputs[3] = "lib/smart-wallet/src/CoinbaseSmartWallet.sol:CoinbaseSmartWallet";
-            verifyImplInputs[4] = "--verifier";
-            verifyImplInputs[5] = "blockscout";
-            verifyImplInputs[6] = "--verifier-url";
-            verifyImplInputs[7] = verifyUrl;
-            
-            console.log("Verifying implementation contract...");
-            vm.ffi(verifyImplInputs);
-            
-            console.log("[OK] Contract verification submitted to block explorer");
         } else {
             console.log("[ERROR] Error: EOA code is still empty!");
         }

@@ -10,7 +10,7 @@ import {ECDSA} from "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.s
  * This script tests an upgraded EOA by verifying ownership and executing an ETH transfer
  *
  * Prerequisites:
- * 1. EOA must already be upgraded using Deploy.s.sol
+ * 1. EOA must already be upgraded using UpgradeEOA.s.sol
  * 2. For local testing: Anvil node must be running with --odyssey flag
  * 3. For Odyssey testnet: Must have EOA_PRIVATE_KEY env var set
  *
@@ -63,7 +63,7 @@ contract Initialize is Script {
         console.log("Using proxy template at:", proxyAddr);
 
         // First verify the EOA has code
-        require(address(eoa).code.length > 0, "EOA not upgraded yet! Run Auth.s.sol first");
+        require(address(eoa).code.length > 0, "EOA not upgraded yet! Run UpgradeEOA.s.sol first");
         console.log("[OK] Verified EOA has been upgraded");
 
         // Create and sign the initialize data
@@ -100,6 +100,6 @@ contract Initialize is Script {
         console.log("[OK] Verified EOA is an owner of the smart wallet");
 
         // Verifying that the EOA can call `execute` on the smart wallet isn't an interesting test because
-        // the EOA passes the `_isOwnerOrEntrypoint` check by way of being the address of the smart wallet.
+        // the EOA passes the `_isOwnerOrEntrypoint` check simply by way of being the address of itself, the smart wallet.
     }
 } 
