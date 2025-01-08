@@ -54,8 +54,8 @@ contract UpgradeEOA is Script {
     using Strings for uint256;
 
     // Anvil's default funded accounts (for local testing)
-    address constant _ANVIL_ALICE = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
-    uint256 constant _ANVIL_ALICE_PK = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
+    address constant _ANVIL_EOA = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
+    uint256 constant _ANVIL_EOA_PK = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
     uint256 constant _ANVIL_DEPLOYER_PK = 0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6;
 
     // Chain IDs
@@ -72,8 +72,8 @@ contract UpgradeEOA is Script {
         if (block.chainid == _ANVIL_CHAIN_ID) {
             console.log("Using Anvil's pre-funded accounts");
             deployerPk = _ANVIL_DEPLOYER_PK;
-            eoaPk = _ANVIL_ALICE_PK;
-            eoa = _ANVIL_ALICE;
+            eoaPk = _ANVIL_EOA_PK;
+            eoa = _ANVIL_EOA;
         } else if (block.chainid == _ODYSSEY_CHAIN_ID) {
             console.log("Using Odyssey testnet with environment variables");
             deployerPk = vm.envUint("DEPLOYER_PRIVATE_KEY");
