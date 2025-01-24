@@ -1,126 +1,76 @@
-# EIP-7702 Proxy
+## Steps involved
 
-**Proxy contract designed for EIP-7702 accounts.**
+- Start local anvil node with Odyssey features enabled
 
-> These contracts are unaudited and simple prototypes. Use at your own risk.
-
-### Key features
-* Protect initializers with chain-agnostic EOA signatures
-* Use existing Smart Account contracts without changes
-* Unify contract implementation upgrades using ERC-1967 storage slots
-
-### How to use
-1. Deploy an instance of `EIP7702Proxy` pointing to a specific smart account implementation.
-1. Sign an EIP-7702 authorization with the EOA
-1. Sign an initialization hash with the EOA
-1. Submit transaction with EIP-7702 authorization and call to `account.initialize(bytes args, bytes signature)`
-    1. `bytes args`: arguments to the smart account implementation's actual initializer function
-    1. `bytes signature`: ECDSA signature over the initialization hash from the EOA
-
-Now the EOA has been upgraded to the smart account implementation and had its state initialized.
-
-If the smart account implementation supports UUPS upgradeability, it will work as designed by submitting upgrade calls to the account.
-
-### How does it work?
-* `EIP7702Proxy` is constructed with an `initalImplementation` that it will delegate all calls to by default
-* `EIP7702Proxy` is constructed with a `guardedInitializer`, the initializer selector of the `initialImplementation`
-* Calls to the account on `guardedInitializer` revert and do not delegate the call to the smart account implementation
-* `EIP7702Proxy` defines a new, static selector compatible with all initializers: `initialize(bytes args, bytes signature)`
-* Calls to the account on `initialize` have their signature validated via ECDSA and the proxy delegates a call combining the `guardedInitializer` and provided `args` to the `initialImplementation`
-* The `initialImplementation` is responsible for handling replay protection, which is standard practice among smart accounts
-* All other function selectors are undisturbed and this proxy functions akin to a simple ERC-1967 proxy
-
----
-
-## Performing EIP-7702 upgrades
-
-This repository contains scripts that can be used to perform an EIP-7702 upgrade to a `EIP7702Proxy` with a `CoinbaseSmartWallet` implementation and initialize the smart account. The [Odyssey testnet](https://hub.conduit.xyz/odyssey) by [Ithaca](https://www.ithaca.xyz) has EIP-7702 enabled. If testing locally, you can use the Anvil testnet with Odyssey enabled.
-
-The upgrade process happens in two steps:
-
-1. **UpgradeEOA.s.sol**: Deploys the implementation and proxy template, then performs the EIP-7702 upgrade
-   - Outputs the proxy template address which is needed for the initialization step
-   - For Odyssey: Save this address to use in the next step
-
-2. **Initialize.s.sol**: Initializes the smart account with a new owner and tests the upgrade
-   - For Odyssey: Requires the proxy template address from step 1
-
-> ℹ️ See the scripts themselves for additional comments and documentation.
-
-### Prerequisites
-- Foundry installed
-- If you're using the Odyssey testnet, you'll need three private keys funded with some Odyssey ETH (see `.env.example`):
-    - `EOA_PRIVATE_KEY`: The private key of the EOA to be upgraded
-    - `DEPLOYER_PRIVATE_KEY`: The private key of the EOA that will perform the upgrade
-    - `NEW_OWNER_PRIVATE_KEY`: The private key of another EOA that will be added as an owner
-    - `PROXY_TEMPLATE_ADDRESS_ODYSSEY`: Address of the proxy template (from UpgradeEOA.s.sol output)
-
-Odyssey Chain Info: https://hub.conduit.xyz/odyssey
-
-### Local Testing (Anvil)
-
-1. Start a local Anvil node with Odyssey enabled:
 ```bash
 anvil --odyssey
 ```
 
-2. Run the UpgradeEOA script to upgrade your EOA:
+- Anvil comes with pre-funded developer accounts which we can use for the example going forward
+
 ```bash
-forge script script/UpgradeEOA.s.sol --rpc-url http://localhost:8545 --broadcast --ffi
+# using anvil dev accounts
+export ALICE_ADDRESS="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+export ALICE_PK="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+export BOB_ADDRESS="0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+export BOB_PK="0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
 ```
 
-3. Run the Initialize script to set up ownership:
+- We need to deploy the EIP7702Proxy contract and its CoinbaseSmartWallet implementation
+
 ```bash
-forge script script/Initialize.s.sol --rpc-url http://localhost:8545 --broadcast
+forge script script/DeployTemplate.s.sol --broadcast --rpc-url http://localhost:8545
 ```
 
-### Odyssey Testnet Deployment
+- Record the proxy contract address
 
-1. Set up environment variables (see `.env.example`)
-
-2. Run the UpgradeEOA script with Odyssey RPC:
 ```bash
-forge script script/UpgradeEOA.s.sol --rpc-url https://odyssey.ithaca.xyz --broadcast --ffi
-# Note the proxy template address from the output
-export PROXY_TEMPLATE_ADDRESS_ODYSSEY=<address from output>
+export PROXY_TEMPLATE_ADDRESS="0x261D8c5e9742e6f7f1076Fa1F560894524e19cad"
 ```
 
-3. Run the Initialize script:
+<!-- - Generate the initialization data for the proxy contract:
+
 ```bash
-forge script script/Initialize.s.sol --rpc-url https://odyssey.ithaca.xyz --broadcast
+forge script script/GenerateInitData.s.sol --rpc-url http://localhost:8545
+``` -->
+
+```bash
+export INIT_CALLDATA="0x1af19f770000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000200000000000000000000000003c44cdddb6a900fa2b585dd299e03d12fa4293bc00000000000000000000000000000000000000000000000000000000000000416e0c676d16c35c87068e29cec7bc313b3b13e098edab0ce2142f3fa189e093256bb0a86614b98b1ecc153add0cc8e065bc91a3cdaf0aa885a7f32f88451f40241b00000000000000000000000000000000000000000000000000000000000000"
 ```
 
-## Contract Verification
-
-Below are the commands to verify the implementation contract and proxy template. While we can verify the implementation contract and proxy template, we've been unable to verify the upgraded EOA address directly. We suspect it might be related to EIP-7702's deployment mechanism being different from traditional contract deployments, but this needs to be confirmed with the Blockscout and/or Ithaca teams.
-
-In the meantime, you can check correctness by:
-1. Comparing your EOA's code with the verified proxy template
-2. Checking that the proxy delegates to the verified implementation
-3. Using the provided scripts to test interactions
-
-### Verifying the Implementation Contract
+- Alice can sign an EIP-7702 authorization using `cast wallet sign-auth` as follows:
 
 ```bash
-forge verify-contract \
-    --verifier blockscout \
-    --verifier-url "https://odyssey-explorer.ithaca.xyz/api" \
-    --watch \
-    --compiler-version "v0.8.23" \
-    --num-of-optimizations 200 \
-    <IMPLEMENTATION_ADDRESS> \
-    lib/smart-wallet/src/CoinbaseSmartWallet.sol:CoinbaseSmartWallet
+SIGNED_AUTH=$(cast wallet sign-auth $PROXY_TEMPLATE_ADDRESS --private-key $ALICE_PK)
 ```
 
-### Verifying the Proxy Template
+- Bob relays the transaction on Alice's behalf using his own private key and thereby paying gas fee from his account:
 
 ```bash
-forge verify-contract \
-    --verifier blockscout \
-    --verifier-url "https://odyssey-explorer.ithaca.xyz/api" \
-    --watch \
-    --compiler-version "v0.8.23" \
-    --num-of-optimizations 200 \
-    <PROXY_TEMPLATE_ADDRESS> \
-    src/EIP7702Proxy.sol:EIP7702Proxy
+cast send $ALICE_ADDRESS $INIT_CALLDATA --private-key $BOB_PK --auth $SIGNED_AUTH
+```
+
+- Verify that our auth was successful, by checking Alice's code which now contains the [delegation designation](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-7702.md#delegation-designation) prefix `0xef01`:
+
+```bash
+$ cast code $ALICE_ADDRESS
+0xef0100...
+```
+
+- Verify that our call to initialized happened by checking the contract's state
+
+```bash
+cast call $ALICE_ADDRESS "isOwnerAddress(address)" $BOB_ADDRESS --rpc-url http://localhost:8545
+```
+
+- Try again to call the contract, this time without the auth flag
+
+```bash
+cast send $ALICE_ADDRESS $INIT_CALLDATA --private-key $BOB_PK
+```
+
+- Verify the state once more, the state has changed!
+
+```bash
+cast call $ALICE_ADDRESS "isOwnerAddress(address)" $BOB_ADDRESS --rpc-url http://localhost:8545
 ```
